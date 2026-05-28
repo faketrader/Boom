@@ -87,18 +87,54 @@ pub fn reveal_in_explorer(path: String) -> Result<(), String> {
     if target.is_empty() {
         return Err("路径不能为空".to_string());
     }
-    let mut command = Command::new("explorer.exe");
-    command.arg("/select,").arg(target);
+    let path = PathBuf::from(target);
+    if !path.exists() {
+        return Err("路径不存在".to_string());
+    }
 
-    #[cfg(windows)]
+    #[cfg(target_os = "windows")]
     {
+        let mut command = Command::new("explorer.exe");
+        command.arg("/select,").arg(&path);
+
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
         command.creation_flags(CREATE_NO_WINDOW);
+
+        command
+            .spawn()
+            .map_err(|e| format!("打开资源管理器失败: {e}"))?;
     }
 
-    command
-        .spawn()
-        .map_err(|e| format!("打开资源管理器失败: {e}"))?;
+    #[cfg(target_os = "macos")]
+    {
+        let mut command = Command::new("open");
+        if path.is_file() {
+            command.arg("-R").arg(&path);
+        } else {
+            command.arg(&path);
+        }
+        command
+            .spawn()
+            .map_err(|e| format!("打开 Finder 失败: {e}"))?;
+    }
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        let mut command = Command::new("xdg-open");
+        if path.is_file() {
+            if let Some(parent) = path.parent() {
+                command.arg(parent);
+            } else {
+                command.arg(&path);
+            }
+        } else {
+            command.arg(&path);
+        }
+        command
+            .spawn()
+            .map_err(|e| format!("打开文件管理器失败: {e}"))?;
+    }
+
     Ok(())
 }
